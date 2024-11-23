@@ -73,6 +73,6 @@ def generate_status_report(json_file, report_date):
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
-# Replace 'export-board-11222024.json' with the path to your Wekan Board export JSON file
-# ToDo: Make the date dynamic... maybe
+# Replace 'export-board-11222024.json' with the path to current JSON file
+# Change the date param to a func
 generate_status_report('export-board-11222024.json', '11/22/2024')
