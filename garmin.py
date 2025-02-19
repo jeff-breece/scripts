@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 import os
 
 # Replace these with your Garmin Connect username and password
-username = "{your-user-name}"
-password = "{your-password}"
+username = "jeffbreece@outlook.com"
+password = "Jefrobaby656#"
 
 def get_garmin_biometrics(start_date, end_date, output_folder):
     try:
@@ -45,11 +45,11 @@ def get_garmin_biometrics(start_date, end_date, output_folder):
 
 if __name__ == "__main__":
     # Define the date range (modify these dates as needed)
-    start_date = datetime(2024, 1, 1)  # Start date (YYYY, M, D)
-    end_date = datetime(2024, 11, 10)    # End date (YYYY, M, D)
+    start_date = datetime(2016, 1, 1)  # Start date (YYYY, M, D)
+    end_date = datetime(2023, 12, 31)    # End date (YYYY, M, D)
 
     # Output folder for JSON files
-    output_folder = "garmin_biometrics_data"
+    output_folder = "/home/jeff/data/raw/garmin_biometrics_data"
 
     # Run the function
     get_garmin_biometrics(start_date, end_date, output_folder)
