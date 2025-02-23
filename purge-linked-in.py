@@ -6,8 +6,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 # LinkedIn credentials (store securely in env variables)
-LINKEDIN_EMAIL = "jeffbreece@outlook.com"
-LINKEDIN_PASSWORD = "Jefrobaby656#"
+LINKEDIN_EMAIL = "{user-name}"
+LINKEDIN_PASSWORD = "{password}"
 
 # LinkedIn Activity Page for Likes
 ACTIVITY_URL = "https://www.linkedin.com/in/me/recent-activity/likes/"

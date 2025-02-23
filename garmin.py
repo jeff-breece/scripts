@@ -2,11 +2,30 @@ import garminconnect
 import json
 from datetime import datetime, timedelta
 import os
+import hvac
 
-# Replace these with your Garmin Connect username and password
-username = "jeffbreece@outlook.com"
-password = "Jefrobaby656#"
+# ---------------------------
+# Vault Configuration
+# ---------------------------
+VAULT_ADDR = "http://127.0.0.1:8200"
+VAULT_TOKEN = os.getenv("VAULT_TOKEN", "your-token-here")
+client = hvac.Client(url=VAULT_ADDR, token=VAULT_TOKEN)
 
+# Fetch Garmin credentials from Vault
+try:
+    vault_secrets = client.secrets.kv.v2.read_secret_version(
+        path="automation_keys",
+        raise_on_deleted_version=True
+    )["data"]["data"]
+    username = vault_secrets["GARMIN_USER_ID"]
+    password = vault_secrets["GARMIN_USER_PASSWORD"]
+except Exception as e:
+    print(f"Error accessing Vault for Garmin credentials: {e}")
+    exit(1)
+
+# ---------------------------
+# Garmin Data Export Function
+# ---------------------------
 def get_garmin_biometrics(start_date, end_date, output_folder):
     try:
         # Initialize the Garmin client
@@ -14,8 +33,7 @@ def get_garmin_biometrics(start_date, end_date, output_folder):
         client.login()  # Log in to Garmin Connect
 
         # Create the output folder if it doesn't exist
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder)
+        os.makedirs(output_folder, exist_ok=True)
 
         # Loop through the date range
         current_date = start_date
@@ -23,8 +41,8 @@ def get_garmin_biometrics(start_date, end_date, output_folder):
             cdate_str = current_date.strftime('%Y-%m-%d')
             print(f"Fetching data for {cdate_str}")
 
-            # Fetch biometrics data for the current date
             try:
+                # Fetch biometrics data for the current date
                 biometrics = client.get_user_summary(cdate_str)
 
                 # Save the data to a JSON file
@@ -38,18 +56,36 @@ def get_garmin_biometrics(start_date, end_date, output_folder):
             # Move to the next day
             current_date += timedelta(days=1)
 
-        print("Data export completed successfully.")
+        print("✅ Data export completed successfully.")
 
     except Exception as e:
-        print("Error:", str(e))
+        print(f"🚨 Error initializing Garmin client: {str(e)}")
 
+# ---------------------------
+# Main Execution
+# ---------------------------
 if __name__ == "__main__":
-    # Define the date range (modify these dates as needed)
-    start_date = datetime(2016, 1, 1)  # Start date (YYYY, M, D)
-    end_date = datetime(2023, 12, 31)    # End date (YYYY, M, D)
+    try:
+        # Prompt user for date range
+        start_date_input = input("Enter start date (YYYY-MM-DD): ")
+        end_date_input = input("Enter end date (YYYY-MM-DD): ")
 
-    # Output folder for JSON files
-    output_folder = "/home/jeff/data/raw/garmin_biometrics_data"
+        # Convert input to datetime objects
+        start_date = datetime.strptime(start_date_input, "%Y-%m-%d")
+        end_date = datetime.strptime(end_date_input, "%Y-%m-%d")
 
-    # Run the function
-    get_garmin_biometrics(start_date, end_date, output_folder)
+        # Validate date range
+        if end_date < start_date:
+            print("🚨 End date cannot be before start date.")
+            exit(1)
+
+        # Output folder for JSON files
+        output_folder = "/home/jeff/data/raw/garmin_biometrics_data"
+
+        # Run the function
+        get_garmin_biometrics(start_date, end_date, output_folder)
+
+    except ValueError as ve:
+        print(f"🚨 Invalid date format: {ve}")
+    except Exception as e:
+        print(f"🚨 An unexpected error occurred: {e}")

@@ -1,4 +1,5 @@
 #!/bin/bash
+# Script I am working on to do some data anlysis on stream dynamics on a precompiled data set
 
 # Exit on errors
 set -e
