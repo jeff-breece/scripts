@@ -10,29 +10,43 @@ import boto3
 from botocore.exceptions import NoCredentialsError
 import pandas as pd
 from io import BytesIO
+import logging
 
 # ---------------------------
 # Vault Configuration
 # ---------------------------
 VAULT_ADDR = "http://127.0.0.1:8200"
-VAULT_TOKEN = os.getenv("VAULT_TOKEN", "your-token-here")
+VAULT_TOKEN = os.getenv("VAULT_TOKEN")
+
+if not VAULT_TOKEN:
+    print("❌ VAULT_TOKEN environment variable not set. Please set it before running the script.")
+    exit(1)
+
 client = hvac.Client(url=VAULT_ADDR, token=VAULT_TOKEN)
 
-# Updated to use automation_keys
-vault_secrets = try:
-    vault_secrets = client.secrets.kv.v2.read_secret_version(
-        path="automation_keys",
+try:
+    news_api_key = client.secrets.kv.v2.read_secret_version(
+        path="news_api",
+        mount_point="automation_keys",
         raise_on_deleted_version=True
-    )["data"]["data"]
+    )["data"]["data"]["NEWS_API_KEY"]
+
+    minio_access_key = client.secrets.kv.v2.read_secret_version(
+        path="minio_access",
+        mount_point="automation_keys",
+        raise_on_deleted_version=True
+    )["data"]["data"]["MINIO_ACCESS_KEY"]
+
+    minio_secret_key = client.secrets.kv.v2.read_secret_version(
+        path="minio_secret",
+        mount_point="automation_keys",
+        raise_on_deleted_version=True
+    )["data"]["data"]["MINIO_SECRET_KEY"]
+
 except Exception as e:
     print(f"Error accessing Vault: {e}")
-    exit(1)["data"]["data"]
+    exit(1)
 
-NEWS_API_KEY = vault_secrets["NEWS_API_KEY"]
-MINIO_ACCESS_KEY = vault_secrets["MINIO_ACCESS_KEY"]
-MINIO_SECRET_KEY = vault_secrets["MINIO_SECRET_KEY"]
-
-import logging
 logging.basicConfig(level=logging.INFO)
 logging.info("Vault secrets loaded successfully.")
 
@@ -61,8 +75,8 @@ DATE_FROM = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 s3_client = boto3.client(
     's3',
     endpoint_url=f'http://{MINIO_ENDPOINT}',
-    aws_access_key_id=MINIO_ACCESS_KEY,
-    aws_secret_access_key=MINIO_SECRET_KEY,
+    aws_access_key_id=minio_access_key,
+    aws_secret_access_key=minio_secret_key,
     region_name='us-east-1'
 )
 
@@ -72,7 +86,7 @@ s3_client = boto3.client(
 def fetch_newsapi():
     url = "https://newsapi.org/v2/everything"
     params = {"q": QUERY, "language": LANGUAGE, "pageSize": PAGE_SIZE, "from": DATE_FROM}
-    headers = {"Authorization": f"Bearer {NEWS_API_KEY}"}
+    headers = {"Authorization": f"Bearer {news_api_key}"}
     response = requests.get(url, params=params, headers=headers)
     if response.status_code == 200:
         articles = response.json().get("articles", [])
@@ -89,7 +103,7 @@ def fetch_newsapi():
 
 def fetch_google_news():
     encoded_query = urllib.parse.quote(QUERY)
-    rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl={LANGUAGE}&gl=US&ceid=US:{LANGAGE.upper()}"
+    rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl={LANGUAGE}&gl=US&ceid=US:{LANGUAGE.upper()}"
     feed = feedparser.parse(rss_url)
     return [{
         "title": entry.get("title"),
@@ -105,13 +119,7 @@ def deduplicate_articles(articles):
 
 def upload_to_s3(file_buffer, s3_key):
     try:
-        try:
-    s3_client.upload_fileobj(file_buffer, S3_BUCKET, s3_key)
-    print(f"File successfully uploaded to S3 as {s3_key}.")
-except NoCredentialsError:
-    print("Credentials not available for MinIO.")
-except Exception as e:
-    print(f"Error uploading file to S3: {e}")
+        s3_client.upload_fileobj(file_buffer, S3_BUCKET, s3_key)
         print(f"File successfully uploaded to S3 as {s3_key}.")
     except NoCredentialsError:
         print("Credentials not available for MinIO.")
@@ -135,10 +143,10 @@ def save_articles(articles):
     df = pd.DataFrame(articles)
     parquet_buffer = BytesIO()
     try:
-    df.to_parquet(parquet_buffer, engine='pyarrow')
-except Exception as e:
-    print(f"Error converting to Parquet: {e}")
-    return
+        df.to_parquet(parquet_buffer, engine='pyarrow')
+    except Exception as e:
+        print(f"Error converting to Parquet: {e}")
+        return
     parquet_buffer.seek(0)
     s3_key = f"water-news-alerts/media/water-news-alert_{timestamp}.parquet"
     upload_to_s3(parquet_buffer, s3_key)
@@ -146,15 +154,18 @@ except Exception as e:
 
 def main():
     articles_newsapi = fetch_newsapi()
-articles_google_news = fetch_google_news()
-articles = articles_newsapi + articles_google_news
-if not articles_newsapi:
-    print("No articles fetched from NewsAPI.")
-if not articles_google_news:
-    print("No articles fetched from Google News.")
+    articles_google_news = fetch_google_news()
+    articles = articles_newsapi + articles_google_news
+
+    if not articles_newsapi:
+        print("No articles fetched from NewsAPI.")
+    if not articles_google_news:
+        print("No articles fetched from Google News.")
+
     print(f"Fetched {len(articles)} articles before deduplication.")
     articles = deduplicate_articles(articles)
     print(f"{len(articles)} articles remain after deduplication.")
+
     if articles:
         save_articles(articles)
     else:
